@@ -1,0 +1,385 @@
+.TH uftpd 1 "28 February 2016" "UFTP 4.9"
+.SH NAME
+uftpd - Encrypted UDP based ftp with multicast - client daemon
+.SH SYNOPSIS
+uftpd [ -d ] [ -p port ] [ -B buf_size ]
+    [ -E ] [ -Q dscp ] [ -U UID ] [ -x log_level ] [ -t ]
+    [ -T temp_dir ] [ -D dest_dir[,dest_dir... ]]
+    [ -A backup_dir[,backup_dir... ]] [ -L logfile ]
+    [ -F status_file ] [ -q ]
+    [ -P pidfile ] [ -S serverlist_file ] [ -R proxy[/fp] ]
+    [ -c cache_size ] [ -k keyfile[,keyfile...] ]
+    [ -K rsa:key_len | ec:curve[,rsa:key_len | ec:curve...]]
+    [ -m ] [ -N priority ] [ -i ] [ -s postreceive_script ]
+    [ -g max_log_size ] [ -n max_log_count ]
+    [ -H hb_server[:port][,hb_server[:port]...] ]
+    [ -h hb_interval ] [ -I interface[,interface...] ]
+    [ -M pub_mcast_addr[,pub_mcast_addr...] ]
+.SH DESCRIPTION
+.P
+.B uftpd
+is the client daemon of the UFTP suite.
+It listens on one or more multicast addresses to receive files from servers.
+
+This version of the client supports servers running UFTP 4.x.
+
+.SH OPTIONS
+.P
+The following options are supported:
+.TP
+.B \-d
+Enable debug mode.
+The process will run in the foreground and all output will go to stderr.
+If specified, the \fB\-L\fP option is ignored.
+.TP
+.BI \-p \ port
+The UDP port number to listen on.
+Default is \fB1044\fP.
+.TP
+.BI \-U \ UID
+The unique ID for this client, specified as an 8 digit hexadecimal number (0xnnnnnnnn).
+The default value is based on the IP address of the first listed multicast capable interface on the system.
+If this address is IPv4, the UID is the address.
+If it is IPv6, the UID is the last 4 bytes of the address.
+.TP
+.BI \-B \ buf_size
+The size in bytes of the UDP receive buffer to use.
+Valid values are 65536-104857600 (64KB-100MB).
+Defaults to \fB262144\fP.
+.TP
+.B \-E
+Only allow incoming sessions if encryption is enabled.
+Default is to allow both encrypted and unencrypted sessions.
+.TP
+.BI \-Q \ dscp
+Specifies the Differentiated Services Code Point (DSCP), formerly Type of Service (TOS), in the IP header for all outgoing packets.
+Valid values are 0-63 and may be specified in either decimal or hexadecimal.
+Default is \fB0\fP.
+
+On Windows XP systems, the OS doesn\(aqt allow this parameter to be changed by default.
+To change this, add/modify the following DWORD registry value, set to 0, and reboot:
+
+.na
+HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\DisableUserTOSSetting
+.ad
+
+Not currently supported on Windows Vista or later.
+.TP
+.BI \-x \ log_level
+Specifies current logging level.
+Valid values are 0-5, with \fB0\fP being the least verbose and \fB5\fP being the most verbose.
+Default is \fB2\fP, which is consistent with logging prior to version 3.5.
+.TP
+.B \-t
+Receive each file into a temp file in the same directory as the destination file.
+The temp file will have an extension of \fI.~uftp-{group-id}-{file-id}\fP, where {group-id} and {file-id} are the group ID of the current session and file ID of the current file.
+If \fB\-A\fP is also specified, the existing destination file is not moved to backup directory until after the file is fully received.
+.TP
+.BI \-T \ temp_dir
+Temp directory in which files are received, then moved to dest_dir when the session is complete.
+If omitted, files are received directly into dest_dir.
+Must reside on the same filesystem as the destination directory.
+
+The \fB\-T\fP option MUST be specified to allow the client to save the state of failed file transfers that can be resumed later.
+
+Not compatible \fB\-A\fP or \fB\-t\fP.
+Not compatible with \fB\-D\fP when multiple destination directories are specified.
+Also, if this option is specified, no incoming files with an absolute path will be accepted, and sync mode will not work properly since there is no existing file to check.
+
+IMPORTANT: When full directories are received, the entire directory is moved at once to the destination directory, removing any existing file/directory.
+This means that if an existing directory in dest_dir is the same name as a directory received into temp_dir, all files under the existing directory are deleted.
+The \fB\-i\fP option prevents this by moving all files individually.
+.TP
+\fB\-D\fP \fIdest_dir\fP[\fB,\fP\fIdest_dir\fP...]
+Destination directories for all received files.
+When an incoming file specifies an absolute path, it must match one of the destination directories, otherwise the file will be rejected.
+Incoming files that don\(aqt specify an absolute path will be received into the first destination directory in the list.
+Default is \fI/tmp\fP for UNIX-like systems, \fIC:\\temp\fP for Windows.
+.TP
+\fB\-A\fP \fIbackup_dir\fP[\fB,\fP\fIbackup_dir\fP...]
+Specifies backup directories.
+Each backup directory corresponds to a destination directory, so the number of each MUST be the same.
+Existing files that would be overwritten by incoming files are moved to the corresponding backup directory for the selected destination directory, first under timestamped directories, then under the full path of the existing file.
+
+For example, if \fI/full/path/to/file\fP would be overwritten, it is moved to \fI{backup_dir}/YYYYMMDD/HHMMSS/full/path/to/file\fP.
+Under Windows, drive letters for local files are not part of the name, but host/share names for network files are.
+So \fIC:\\path\\to\\file\fP would be backed up to \fI{backup_dir}\\YYYYMMDD\\HHMMSS\\path\\to\\file\fP, and \fI\\\\host\\share\\path\\to\\file\fP would be backed up to \fI{backup_dir}\\YYYYMMDD\\HHMMSS\\host\\share\\path\\to\\file\fP.
+
+Not compatible with \fB\-T\fP.
+.TP
+.BI \-L \ logfile
+Specifies the log file.
+Default is \fI/tmp/uftpd.log\fP for UNIX-like systems systems, \fIC:\\uftpd_log.txt\fP for Windows.
+.TP
+.BI \-F \ status_file
+Prints easily parsable status information to a file.
+Setting this option to @LOG results in status info being mixed with normal logging output.
+
+The following is printed when the client registers with a server:
+
+.nf
+CONNECT;timestamp;server_id;session_id;server_ip;server_name
+.fi
+
+Where "timestamp" is the time in yyyy/mm/dd-hh:mm:ss format, "server_id" is the ID of the server, "session_id" is the ID of the session with the server, "server_ip" is the IP address that the server message came from, and "server_name" is the name associated with server_ip.
+
+The following is printed after each file:
+
+.nf
+RESULT;timestamp;server_id;session_id;filename;size;status
+.fi
+
+Where "timestamp" is the time in yyyy/mm/dd-hh:mm:ss format, "server_id" is the ID of the server, "session_id" is the ID of the session with the server, "filename" is the name of the current file, "size" is the size of the file in kilobytes (i.e. 1234KB), and status is:
+
+copy: The file was received.
+
+overwrite: The file was received, and overwrote an existing file.
+Only generated in sync mode.
+
+skipped: The file was declined because it is older that the existing file.
+Only generated in sync mode.
+
+rejected: The file was rejected, because the file was sent with an absolute pathname and either the client is using a temp directory or the filename doesn\(aqt match one of the client\(aqs destination directories.
+.TP
+.B \-q
+When the client receives an ANNOUNCE from the server, it normally print the hostname associated with the IP address where the ANNOUNCE came from.
+Specifying this option prevents a DNS lookup of the server IP, saving time.
+.TP
+.BI \-P \ pidfile
+The pidfile to write the daemon\(aqs pid to on startup.
+Default is no \fIpidfile\fP.
+.TP
+.BI \-S \ serverlist_file
+A file containing a list of servers the client will allow to send files to it.
+The file should contain the ID of the server, the IP address the client expects the server\(aqs request to come from, and optionally the server\(aqs public key fingerprint, with one entry for a server on each line.
+If a key fingerprint is given, the key specified by the server must match the fingerprint.
+If your system supports source specific multicast (SSM), the client will subscribe to all public and private multicast addresses using SSM for all servers listed.
+
+When this option is specified, the public and private addresses specified by the server must be valid SSM addresses.
+Any ANNOUNCE that specifies a private IP that is not a valid SSM address will be rejected.
+Valid SSM addresses are in the 232/8 range for IPv4 and the ff30::/96 range for IPv6.
+
+.nf
+Example contents:
+0x11112222|192.168.1.101|66:1E:C9:1D:FC:99:DB:60:B0:1A:F0:8F:CA:F4:28:27:A6:BE:94:BC
+0x11113333|fe80::213:72ff:fed6:69ca
+.fi
+
+When expecting to receive from a server that is behind a proxy, the file should list the ID of the server along with the IP and fingerprint of the client proxy.
+The proxy can authenticate the server.
+.TP
+\fB\-R\fP \fIproxy\fP[\fB/\fP\fIfingerprint\fP]
+Specifies the name/IP of the response proxy that all responses are forwarded to.
+If fingerprint is given, it specifies the proxy\(aqs public key fingerprint.
+Upon startup, the client will query the proxy for its public key, retrying every 5 seconds until it gets a successful response.
+The client cannot accept an encrypted file transfer from a server until it gets the proxy\(aqs key.
+.TP
+.BI \-c \ cache_size
+Specifies the size in bytes of the cache used to hold received data packets before they are written to disk.
+Proper tuning of this value can greatly increase efficiency at speeds in the gigabit range.
+Valid values are 10240-20971520 (10KB-20MB).
+Default is \fB1048576\fP (1MB).
+.TP
+\fB\-k\fP \fIkeyfile\fP[\fB,\fP\fIkeyfile\fP...]
+.TP
+\fB\-K\fP {\fBrsa:\fP\fIkey_len\fP | \fBec:\fP\fIcurve\fP}
+These two options are used to read and/or write the client\(aqs RSA/ECDSA private keys.
+
+The \fB\-K\fP option creates one or more RSA or ECDSA private keys.
+New keys are specified as either \fBrsa:\fP\fIkey_length\fP, which creates an RSA private key \fIkey_length\fP bits wide, or as \fBec:\fP\fIcurve\fP, which creates an EC key using the curve "\fIcurve\fP".
+
+The list of supported EC curves is as follows (availability may vary depending on system settings and crypto library used):
+
+sect163k1 sect163r1 sect163r2 sect193r1 sect193r2 sect233k1 sect233r1 sect239k1 sect283k1 sect283r1 sect409k1 sect409r1 sect571k1 sect571r1 secp160k1 secp160r1 secp160r2 secp192k1 prime192v1 secp224k1 secp224r1 secp256k1 prime256v1 secp384r1 secp521r1
+
+If only \fB\-K\fP is specified, the keys created are not persisted.
+
+If only \fB\-k\fP is specified, this option reads RSA or ECDSA private keys from each keyfile.
+
+If \fB\-k\fP and \fB\-K\fP are specified, the keys created by \fB\-K\fP are written to the keyfiles listed by \fB\-k\fP.
+In this case, \fB\-k\fP and \fB\-K\fP must give the same number of items.
+
+If neither \fB\-k\fP nor \fB\-K\fP are specified, an RSA private key 512 bytes in length is generated and not persisted.
+
+If \fB\-k\fP is specified but not \fB\-K\fP, the RSA or ECDSA private keys are read from each keyfile.
+
+The definition of keyfile is dependent on the crypto library UFTP is compiled to use.
+
+On Windows systems, UFTP can built to use either CNG, which is the new API supported by Windows Vista and Windows 7, or CryptoAPI, which is the legacy API and the only one available to Windows XP.
+
+Under CryptoAPI, all RSA private keys must be stored in a key container (technically only keys used to sign data, but for UFTP\(aqs purposes this is the case).
+Key containers are internal to Windows, and each user (and the system) has its own set of key containers.
+In this case, key_file is actually the name of the key container.
+When \fB\-k\fP is not specified, the generated key is not persisted.
+Elliptic Curve algorithms are not supported under CryptoAPI.
+
+Under CNG, RSA and ECDSA private keys are also stored in key containers, and RSA keys created by CrypoAPI may be read by CNG.
+Like CryptoAPI, key_file also specifies the key container name, and the generated key is not persisted if \fB\-k\fP is not specified.
+CNG only supports 3 named EC curves: \fBprime256v1\fP, \fBsecp384r1\fP, and \fBsecp521r1\fP.
+
+All other systems use OpenSSL for the crypto library (although under Windows UFTP can be also be built to use it).
+In this case, key_file specifies a file name where the RSA private key is stored unencrypted in PEM format (the OS is expected to protect this file).
+When both \fB\-k\fP and \fB\-K\fP are specified, the file is only written to if it does not currently exist.
+If the file does exist, an error message will be returned and the server will exit.
+When \fB\-k\fP is not specified, the generated key is not persisted.
+These PEM files may also be manipulated via the
+.BR openssl (1)
+command line tool.
+
+Keys can also be generated and viewed via the uftp
+.BR keymgt (1)
+utility.
+.TP
+.B \-m
+For Windows systems using CryptoAPI or CNG, private keys are normally stored in the key container of the running user.
+Specifying this option stores keys in the system key container.
+Useful when running as a service.
+On non-Windows systems, this option has no effect.
+.TP
+.BI \-N \ priority
+Sets the process priority.
+On Windows systems, valid values are from \fB-\2\fP to \fB2\fP, with a default of \fB0\fP.
+These correspond to the following priorities:
+
+.nf
+-2 High
+-1 Above Normal
+ 0 Normal
+ 1 Below Normal
+ 2 Low
+.fi
+
+On all other systems, this is the "nice" value.
+Valid values are from \fB\-20\fP to \fB19\fP, where \fB\-20\fP is the highest priority and \fB19\fP is the lowest priority.
+Default is \fB0\fP.
+.TP
+.B \-i
+When \fB\-T\fP is specified, directories are normally moved from the temp directory to the destination directory at once, removing all existing files in the that subdirectory within the destionaion directory.
+This option causes directories to be traversed so that all received files are moved individually, preventing unwanted deletions.
+This also affects the operation of the \fB\-s\fP option.
+If \fB\-T\fP is not specified, this option has no effect.
+.TP
+.BI \-s \ postreceive_script
+The full path to an external command or script to be called when files are received.
+The command will be called as follows:
+
+postreceive_script \-I session_id file [ file... ]
+
+Where "\fIsession_id\fP" is an 8 hexadecimal digit number identifying the current session, and "\fIfile\fP" is the full pathname to one or more received files/directories in the destination directory specified by \fB\-D\fP.
+
+The way this script is called depends on whether or not a temp directory is specified by \fB\-T\fP, and if \fB\-i\fP is specified.
+If a temp directory is not specified, or if both \fB\-T\fP and \fB\-i\fP are specified, the script gets called once for each file as soon as the file is received.
+If a temp directory is specified but \fB\-i\fP is not, the script gets called once at the end of the session, and is passed all top level files/directories received.
+Here, "top level files/directories" refers to all entries in the temp directory for the session, but not subdirectories.
+So the script would be responsible for traversing any listed directories to find files contained within them.
+.TP
+.BI \-g \ max_log_size
+Specifies the maximum log file size in MB.
+Once the log file reaches this size, the file is renamed with a \fI.1\fP extension and a new log file is opened.
+For example, if the log file is \fI/tmp/uftpd.log\fP, it will be renamed \fI/tmp/uftpd.log.1\fP and a new \fI/tmp/uftpd.log\fP will be created.
+Ignored if \fB\-d\fP is specified.
+Valid values are 1-1024.
+Default is no log rolling.
+.TP
+.BI \-n \ max_log_count
+Specifies the maximum number of archive log files to keep when log rolling is active.
+When the log file rolls, archive logs are renamed with an incrementing numerical extension until the max is reached.
+Archive log files beyond the maximum are deleted.
+Ignored if \fB\-g\fP is not specified.
+Valid values are 1-1000.
+Default is \fB5\fP.
+.TP
+\fB\-H\fP \fIhb_server\fP[\fB:\fP\fIport\fP][\fB,\fP\fIhb_server\fP[\fB:\fP\fIport\fP]...]]
+Lists one or more proxies to send heartbeat messages to.
+When sending a signed heartbeat message, the first key listed under \fB\-k\fP is used to sign the message.
+If port is not specified for a given proxy, the default port of \fB1044\fP is assumed.
+.TP
+.BI \-h \ hb_interval
+The time in seconds between sending heartbeat messages.
+Ignored if \fB\-H\fP is not specified.
+.TP
+\fB\-I\fP \fIinterface\fP[\fB,\fP\fIinterface\fP...]
+Lists one or more interfaces to listen to multicast traffic on.
+Interfaces can be specified either by interface name, by hostname, or by IP.
+When receiving a closed group membership request, the client will participate if any of these interfaces matches an IP in the announcement.
+When receiving an open group membership request, the first interface listed is the one the client will report back to the server.
+This may not necessarily be the interface that the ANNOUNCE was received on.
+The default is to listen on all active non-loopback interfaces.
+NOTE: Since Windows doesn\(aqt have named interfaces (not in the sense that UNIX-like systems do), only hostnames or IP addresses are accepted on Windows.
+If specifying by hostname or IP, may be a mixture of IPv4 and IPv6 addresses, except on systems that don\(aqt support dual mode sockets such as Windows XP.
+.TP
+\fB\-M\fP \fIpub_mcast_addr\fP[\fB,\fP\fIpub_mcast_addr\fP...]
+The list of public multicast addresses to listen on.
+May be a mixture of IPv4 and IPv6 addresses, except on systems that don\(aqt support dual mode sockets such as Windows XP.
+Default is \fB230.4.4.1\fP.
+.SH EXAMPLES
+.P
+Starting with the default options:
+
+.RS 5
+uftpd
+.RE
+
+The client runs as a daemon and listens for announcements on UDP port 1044 on multicast address 230.4.4.1 on all non-loopback network interfaces. Incoming files are received directly into \fI/tmp\fP (\fIC:\\temp\fP on Windows).
+A 512-bit RSA key is generated to handle encrypted sessions.
+
+Suppose you want an external process to handle incoming files in \fI/tmp/dest\fP.
+Since you don\(aqt want to pick up incomplete files, you might want them to be received into \fI/tmp/receiving\fP then moved to \fI/tmp/dest\fP when done.
+Then call the client like this:
+
+.RS 5
+uftpd \-D /tmp/dest \-T /tmp/receiving
+.RE
+
+If the client expects to receive from different servers, one sending on 230.4.4.1 and one sending on ff02:4:4:2:
+
+.RS 5
+uftpd \-M 230.4.4.1,ff02:4:4:2
+.RE
+
+To handle incoming encrypted sessions with differing private keys:
+
+.RS 5
+.nf
+uftpd \-k file_for_rsa_1024_key,file_for_rsa_2048_key,file_for_ec_prime256v1_key
+.fi
+.RE
+
+If incoming packets aren\(aqt being read quickly enough, and you want to increase the UDP receive buffer size to 2 MB:
+
+.RS 5
+uftpd \-B 2097152
+.RE
+
+.SH EXIT STATUS
+.P
+The following exit values are returned:
+.TP
+0
+The client started successfully and is running in the background.
+.TP
+1
+An invalid command line parameter was specified.
+.TP
+2
+An error occurred while attempting to initialize network connections.
+.TP
+3
+An error occurred while reading or generating cryptographic key data.
+.TP
+4
+An error occurred while opening or rolling the log file.
+.TP
+5
+A memory allocation error occurred.
+.TP
+6
+The client was interrupted by the user.
+.SH SEE ALSO
+.BR uftp (1),
+.BR uftpproxyd (1),
+.BR uftp_keymgt (1).
+.SH NOTES
+The latest version of UFTP can be found at http://uftp-multicast.sourceforge.net.
+UFTP is covered by the GNU General Public License.
+Commercial licenses and support are available from Dennis Bush (bush@tcnj.edu).

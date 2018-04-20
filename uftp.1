@@ -1,0 +1,553 @@
+.TH uftp 1 "28 February 2016" "UFTP 4.9"
+.SH NAME
+uftp - Encrypted UDP based ftp with multicast - server
+.SH SYNOPSIS
+uftp [ -R txrate ] [ -L logfile ] [ -B udp_buf_size ]
+    [ -g max_log_size ] [ -n max_log_count ]
+    [ -Y keytype ] [ -h hashtype ] [ -w sigtype ]
+    [ -e keyextype[:curve] ] [ -c ] [ -m max_nak_count ]
+    [ -k key_file ] [ -K key_length | curve ] [ -l ] [ -T ]
+    [ -b block_size ] [ -t ttl ] [ -Q dscp ] [ -z | -Z ]
+    [ -I interface ] [ -p port ] [ -u source_port ]
+    [ -j proxylist_file ] [ -q ] [ -f ] [ -y ] [ -U UID ]
+    [ -a max_passes ] [ -x log_level ] [ -W txweight ]
+    [ -H host[,host...] | -H @hostlist_file
+    | -F restart_file ] [ -X exclude_file ]
+    [ -M pub_multicast_addr ] [ -P priv_multicast_addr ]
+    [ -N max_nak_pct ] [ -C cc_type ] [ -o ][ -D dest_name ]
+    [ -E base_dir[,base_dir... ] ] [ -S status_file ]
+    [ -r init_grtt[:min_grtt:max_grtt] ] [ -s robust ]
+    { -i list_file | file [ file... ] }
+.SH DESCRIPTION
+.P
+.B uftp
+is the server process of the UFTP suite.
+It sends one or more files to one or more receivers via multicast with optional encryption.
+
+.SH OPTIONS
+.P
+The following options are supported:
+.TP
+.BI \-R \ txrate
+The transmission speed in Kbps.
+Specifying \fB-\1\fP for this value results in data being sent as fast as the network interface will allow.
+Using a value of \fB\-1\fP is recommended only if the network path between the server and all clients is as fast as the server\(aqs local interface, and works best in a gigabit environment.
+Default is 1000 Kbps.
+Ignored if \fB\-C\fP is given any value other than "none".
+.TP
+.BI \-L \ logfile
+Specifies the log file.
+Default is to write to stderr.
+.TP
+.BI \-B \ buf_size
+The size in bytes of the UDP send buffer and receive buffer to use.
+Valid values are 65536-104857600 (64KB-100MB).
+Defaults to \fB262144\fP.
+.TP
+.BI \-g \ max_log_size
+Specifies the maximum log file size in MB.
+Once the log file reaches this size, the file is renamed with a \fI.1\fP extension and a new log file is opened.
+For example, if the log file is \fI/tmp/uftp.log\fP, it will be renamed \fI/tmp/uftp.log.1\fP and a new \fI/tmp/uftp.log\fP will be created.
+Ignored if \fB\-L\fP is not specified.
+Valid values are 1-1024.
+Default is no log rolling.
+.TP
+.BI \-n \ max_log_count
+Specifies the maximum number of archive log files to keep when log rolling is active.
+When the log file rolls, archive logs are renamed with an incrementing numerical extension until the max is reached.
+Archive log files beyond the maximum are deleted.
+Ignored if \fB\-L\fP and \fB\-g\fP are not specified.
+Valid values are 1-1000.
+Default is \fB5\fP.
+.TP
+.BI \-Y \ keytype
+The symmetric encryption algorithm to use.
+Valid values are "\fBdes\fP" for DES in CBC mode, "\fB3des\fP" for three key Triple DES in CBC mode, "\fBaes128\-cbc\fP", "\fBaes256\-cbc\fP", "\fBaes128\-gcm\fP", "\fBaes256\-gcm\fP", "\fBaes128\-ccm\fP", "\fBaes256\-ccm\fP", or "\fBnone\fP" to not set up encryption at all.
+The GCM and CCM modes are authenticated encryption modes which applies a signatures at the same time as encryption.
+If one of these modes are specifies, the value of \fB\-w\fP is ignored.
+Default is "\fBnone\fP".
+Not all installations may support all of these algorithms.
+.TP
+.BI \-h \ hashtype
+The hashing algorithm to use for key derivation and HMAC signatures.
+Valid values are "\fBsha1\fP" for SHA-1, "\fBsha256\fP" for SHA-256, "\fBsha384\fP" for SHA-384, and "\fBsha512\fP" for SHA-512.
+Defaults to "\fBsha1\fP".
+Ignored if \fB\-Y\fP is "\fBnone\fP".
+Not all installations may support all of these algorithms.
+.TP
+.BI \-w \ sigtype
+Specifies the type of signature to be applied to encrypted messages.
+Valid values are "\fBhmac\fP" to apply an HMAC to the encrypted message, and "\fBkeyex\fP" to apply either an RSA or ECDSA signature depending on the key exchange algorithm chosen via \fB\-e\fP.
+HMAC signatures are based off the group master key and ensure the sender of a message is a valid member of the group, but does not guarantee that the message came from a specific group member.
+RSA and ECDSA signatures ensure that messages come from a particular member, but is much much slower to calculate than HMAC and creates a larger per-packet overhead.
+If the keytype specified by \fB\-Y\fP is an authentication mode cipher (i.e. AES in GCM or CCM mode), this field is ignored and signatures will instead be generated at the same time data is encrypted.
+This also has the lowest size overhead and is the fastest.
+Default is "\fBhmac\fP".
+Ignored if \fB\-Y\fP is "\fBnone\fP".
+.TP
+\fB\-e\fP \fIkeyextype\fP[\fB:\fP\fIcurve\fP]
+Specifies the key exchange algorithm to use.
+Valid values are "\fBrsa\fP" for an RSA key exchange, "\fBecdh_rsa\fP" for an Elliptic Curve Diffie-Hellman (ECDH) key exchange with RSA signatures, and "\fBecdh_ecdsa\fP" for an ECDH key exchange with ECDSA signatures.
+Using one of the ECDH schemes provides perfect forward security, while using just RSA is slightly more resilient to replay attacks.
+If \fBecdh_rsa\fP or \fBecdh_ecdsa\fP are chosen, the named EC curve that the ECDH key is based on may optionally be selected, with \fBprime256v1\fP as the default (See \fB\-k\fP and \fB\-K\fP for the list of available EC curves).
+Default key exchange scheme is "\fBrsa\fP".
+Ignored if \fB\-Y\fP is "\fBnone\fP".
+.TP
+.B \-c
+If specified, forces clients to authenticate by sending their RSA public key in a CLIENT_KEY message.
+Client key fingerprints and proxy key fingerprints specified by \fB\-H\fP and \fB\-j\fP respectively will NOT be checked unless \fB\-c\fP is specified.
+Ignored if \fB\-Y\fP is "\fBnone\fP".
+.TP
+.BI \-m \ max_nak_count
+Specifies the number of times a client reports naks beyond the maximum percentage before getting dropped.
+Valid values are 1-10.
+Default is \fB1\fP.
+.TP
+.BI \-k \ key_file
+.TP
+\fB\-K\fP \fIkey_length\fP | \fIcurve\fP
+These two options are used to read and/or write the server\(aqs RSA/ECDSA private key.
+Both are ignored if \fB\-Y\fP is "\fBnone\fP".
+
+The type of private key read/written depend on the key exchange algorithm chosen via the \fB\-e\fP option.
+If \fB\-e\fP is "\fBrsa\fP" or "\fBecdh_rsa\fP", \fB\-K\fP specifies the key length in bits of an RSA public/private keypair to generate, and \fB\-k\fP expects an RSA key.
+If \fB\-e\fP is "\fBecdh_ecdsa\fP", \fB\-K\fP specifies a named EC curve on which an EC public/private keypair is generated, and \fB\-k\fP expects an EC key.
+
+The list of supported EC curves is as follows (availability may vary depending on system settings and crypto library used):
+
+sect163k1 sect163r1 sect163r2 sect193r1 sect193r2 sect233k1 sect233r1 sect239k1 sect283k1 sect283r1 sect409k1 sect409r1 sect571k1 sect571r1 secp160k1 secp160r1 secp160r2 secp192k1 prime192v1 secp224k1 secp224r1 secp256k1 prime256v1 secp384r1 secp521r1
+
+If neither \fB\-k\fP nor \fB\-K\fP are specified, either an RSA private key 512 bits in length or an EC private key on curve \fBprime256p1\fP (depending on the value of \fB\-e\fP) is generated but not persisted.
+
+If \fB\-k\fP is specified but not \fB\-K\fP, the RSA or ECDSA private key is read from key_file.
+
+If \fB\-k\fP is not specified but \fB\-K\fP is, an RSA or ECDSA private key is generated but not persisted.
+
+If both \fB\-k\fP and \fB\-K\fP are specified, an RSA or ECDSA private key is generated and stored in key_file.
+
+The definition of \fIkey_file\fP is dependent on the crypto library UFTP is compiled to use.
+
+On Windows systems, UFTP can built to use either CNG, which is the new API supported by Windows Vista and Windows 7, or CryptoAPI, which is the legacy API and the only one available to Windows XP.
+
+Under CryptoAPI, all RSA private keys must be stored in a key container (technically only keys used to sign data, but for UFTP\(aqs purposes this is the case).
+Key containers are internal to Windows, and each user (and the system) has its own set of key containers.
+In this case, key_file is actually the name of the key container.
+When \fB\-k\fP is not specified, the generated key is not persisted.
+Elliptic Curve algorithms are not supported under CryptoAPI.
+
+Under CNG, RSA and ECDSA private keys are also stored in key containers, and RSA keys created by CrypoAPI may be read by CNG.
+Like CryptoAPI, key_file also specifies the key container name, and the generated key is not persisted if \fB\-k\fP is not specified.
+CNG only supports 3 named EC curves: \fBprime256v1\fP, \fBsecp384r1\fP, and \fBsecp521r1\fP.
+
+All other systems use OpenSSL for the crypto library (although under Windows UFTP can be also be built to use it).
+In this case, key_file specifies a file name where the RSA private key is stored unencrypted in PEM format (the OS is expected to protect this file).
+When both \fB\-k\fP and \fB\-K\fP are specified, the file is only written to if it does not currently exist.
+If the file does exist, an error message will be returned and the server will exit.
+When \fB\-k\fP is not specified, the generated key is not persisted.
+These PEM files may also be manipulated via the
+.BR openssl (1)
+command line tool.
+
+Keys can also be generated and viewed via the
+.BR uftp_keymgt (1)
+utility.
+.TP
+.B \-l
+Follow symbolic links.
+By default, if the server encounters a symbolic link, it will send the link itself instead of the file it points to.
+Specifying this flag causes the server to send the file the link points to.
+.TP
+.B \-T
+Print the timestamp on each line of output.
+If \fB\-L\fP is specified, this option is implied.
+.TP
+.BI \-b \ block_size
+Specifies the size of a data block.
+This value should be around 100-200 bytes less that the path MTU to provide ample room for all headers and extensions, up to and including the IP and UDP headers.
+Prior to version 4.0, this option specified the MTU and calculated the block size based on that.
+Default is \fB1300\fP.
+.TP
+.BI \-t \ ttl
+Specifies the time-to-live for multicast packets.
+Default is \fB1\fP.
+.TP
+.BI \-Q \ dscp
+Specifies the Differentiated Services Code Point (DSCP), formerly Type of Service (TOS), in the IP header for all outgoing packets.
+Valid values are 0-63 and may be specified in either decimal or hexadecimal.
+Default is \fB0\fP.
+
+On Windows XP systems, the OS doesn\(aqt allow this parameter to be changed by default.
+To change this, add/modify the following DWORD registry value, set to \fB0\fP, and reboot:
+
+.na
+HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\DisableUserTOSSetting
+.ad
+
+Not currently supported on Windows Vista or later.
+.TP
+.B \-z
+Enables sync mode.
+Clients will check if an incoming file exists.
+If so, the client will decline the incoming file if it either older than the existing file or the same age and the same size as the existing file.
+
+As of version 4.1, parsable output that was previously generated by this option is now enabled separately via the \fB\-S\fP option.
+.TP
+.B \-Z
+Sync preview mode.
+Works like sync mode, except no files are actually transmitted, and the RESULT and STATS lines reflect the status of each file had they actually been sent.
+The "time" and "speed" datapoints are approximated based on the transmission speed.
+.TP
+.BI \-I \ interface
+The interface to send the data from.
+Can be specified either by interface name, by hostname, or by IP.
+If not specified, the default system interface is used.
+.TP
+.BI \-p \ port
+The UDP port number to send to.
+Default is \fB1044\fP.
+.TP
+.BI \-u \ source_port
+The UDP port number to send from.
+Default is \fB0\fP, which uses a random port number.
+.TP
+.BI \-j \ proxylist_file
+A file containing a list of proxies the server is expecting to hear from.
+The file should contain the ID of a proxy optionally followed by the proxy\(aqs public key fingerprint, with one on each line.
+If a key fingerprint is given, the key specified by the proxy must match the fingerprint.
+This option should not be used without \fB\-H\fP.
+If \fB\-H\fP is specified, \fB\-j\fP must also be specified if proxies are expected to respond, otherwise the server will reject the proxies.
+
+.nf
+Example contents:
+0x00001111|66:1E:C9:1D:FC:99:DB:60:B0:1A:F0:8F:CA:F4:28:27:A6:BE:94:BC
+0x00002222
+.fi
+.TP
+.B \-q
+Quit-on-error flag.
+Normally, the server will continue with a session as long as at least one client is still active.
+With this flag, the server will quit if any client aborts, drops out, or never responds.
+Most useful in conjunction with clients using the temp directory option (\fB\-T\fP) so that clients that successfully receive at least one file before being told to abort don\(aqt have files from an aborted session in the destination directory.
+.TP
+.B \-f
+Restartable flag.
+If specified, and at least one client fails to receive all files, the server will write a restart file named "\fI_group_{group ID}_restart\fP in the current directory to save the current state, which includes the group ID, list of files, and list of failed clients.
+This file can then be passed to \fB\-F\fP to restart the failed transfer.
+.TP
+.B \-y
+For Windows systems using CryptoAPI or CNG, private keys are normally stored in the key container of the running user.
+Specifying this option stores keys in the system key container.
+On non-Windows systems, this option has no effect.
+.TP
+.BI \-U \ UID
+The unique ID for this server, specified as an 8 digit hexadecimal number (0xnnnnnnnn).
+The default value is based on the IP address of the outgoing multicast address as specified by \fB\-I\fP.
+If this address is IPv4, the UID is the address.
+If it is IPv6, the UID is the last 4 bytes of the address.
+.TP
+.BI \-a \ max_passes
+The maximum number of passes that are made through the file for transmission before any clients that have not yet fully received the current file are aborted.
+Valid values are 0-65535.
+Default is \fB65535\fP.
+.TP
+.BI \-x \ log_level
+Specifies current logging level.
+Valid values are 0-5, with 0 being the least verbose and 5 being the most verbose.
+Default is \fB2\fP, which is consistent with logging prior to version 3.5.
+.TP
+.BI \-W \ txweight
+Sets the maximum file transfer time, expressed as a percentage of the optimal time.
+Valid values are 110-10000.
+Ignored if congestion control is enabled.
+Default is no maximum time.
+.TP
+\fB\-H\fP { \fIhost\fP[,\fIhost\fP...] | \fB@\fP\fIhostlist_file\fP }
+Specifies the clients for closed group membership.
+Can be specified as either a comma separated list of client IDs, or can be read from hostlist_file.
+This file is in the same format as proxylist_file.
+Note that key fingerprints cannot be specified using the comma separated syntax.
+Clients that are behind a proxy do not need key fingerprints specified, since the proxy\(aqs key fingerprint will be checked instead.
+If unspecified, open group membership is used, and any client may register.
+.TP
+.BI \-F \ restart_file
+Specifies the name of a restart file to use to resume a failed transfer.
+If specified, \fB\-H\fP may not be specified and all files listed to send will be ignored, since the restart file contains both of these.
+All other command line options specified on the first attempt are not automatically applied, so you can alter then for the next attempt if need be.
+.TP
+.BI \-X \ exclude_file
+A file containing the names of files/paths to be excluded from the session, one per line.
+For example, if you send a directory called \fId1\fP containing subdirectories \fId2\fP, \fId3\fP, and \fId4\fP, and you don\(aqt want to send the contents of \fId4\fP, the exclude_file should contain a line reading "\fId1/d4\fP".
+.TP
+.BI \-M \ pub_multicast_addr
+The public address to announce on.
+May be either a multicast address or a unicast address, and either IPv4 or IPv6.
+If a unicast address is specified, the \fB\-P\fP option is ignored and all data moves over the specified unicast address.
+If a multicast IPv6 address is specified, \fB\-P\fP must also be specified.
+Default is \fB230.4.4.1\fP.
+.TP
+.BI \-P \ priv_multicast_addr
+The private multicast address that the data is transferred to.
+One or more parts of the IP address (other that the first) may be replaced with the letter \(aqx\(aq, resulting in a random number being chosen for that part, either 0-255 for IPv4 or 0-0xFFFF for IPv6.
+Default value is \fB230.5.5.x\fP.
+If clients are using source specific multicast (SSM), this and \fB\-M\fP must specify valid SSM addresses, which fall in the range \fI232.0.0.0/8\fP for IPv4 and \fIff3x::/32\fP for IPv6 (here x specifies the multicast scope).
+The values for \fB\-M\fP and \fB\-P\fP must both be the same IP version.
+.TP
+.BI \-N \ max_nak_pct
+Specifies the maximum percentage of NAKs that a client can report for a particular section.
+This option works with the \fB\-m\fP option, which specifies the number of times a client may exceed this limit before getting dropped.
+This allows the server to keep a very slow client from stalling the session for others.
+Valid values are 0-100.
+Default is \fB100\fP.
+.TP
+.BI \-C \ cc_type
+Specifies the congestion control mode to use.
+Currently supported values are "\fBnone\fP" and "\fBtfmcc\fP".
+Specifying "\fBnone\fP" means data will be sent at a fixed rate as specified by the \fB\-R\fP option.
+Specifying "\fBtfmcc\fP" will use the TCP Friendly Multicast Congestion Control scheme as specified in RFC 4654.
+Normally TFMCC will limit the rate based strictly on loss, however a minimum, maximum, and initial rate in Kbps may each be optionally specified for TFMCC mode as "tfmcc:min=min_rate:init=init_rate:max=max_rate", and any or all of these may be applied and in any order.
+Default value is "\fBnone\fP".
+
+TFMCC will make use of the Explicit Congestion Notification (ECN) bits in the IP header on systems that support it natively.
+Known supported systems are Linux, FreeBSD, Windows XP (sender only), Windows Vista and later (receiver only), and Solaris (sender only).
+.TP
+.B \-o
+.TP
+.BI \-D \ dest_name
+These options specify the name given to the sent file(s) on the client side.
+If only one file/directory is specified to send and \fB\-o\fP is not specified, the name specified by \fB\-D\fP is given to that file/directory, and the effects of \fB\-E\fP are ignored.
+If more than one file/directory is specified to send, or if \fB\-o\fP is specified, they are placed in a subdirectory with the name specified by \fB\-D\fP.
+
+This option may also specify an absolute path name.
+If so, clients must be either all Windows or all UNIX-like, since they have differing filesystem structures, otherwise the behavior is undefined.
+The server, however, need not be the same OS as the clients.
+When specifying an absolute path name, the path must be contained in one of a client\(aqs destination directories, otherwise the client will reject the file.
+When sending to Windows clients, an absolute path may be either local (\fIdrive:\\path\\to\\file\fP) or remote (\fI\\\\host\\share\\path\\to\\file\fP).
+.TP
+\fB\-E\fP \fIbase_dir\fP[\fB,\fP\fIbase_dir\fP...]
+Specifies one or more "base" directories for files.
+Normally, for any file/directory specified, any leading path elements are stripped from the name before sending.
+If the specified file/directory name matches one of the base directories, only the path elements of the base directory are stripped, and the remainder is sent as the file name.
+Any specified file/directory that does not match a base directory is skipped.
+
+For example, without \fB\-E\fP, if you pass \fI/path/to/file\fP to send, the transmitted filename is file.
+If you pass in \fB\-E\fP \fI/path\fP, the transmitted file name is \fIto/file\fP.
+.TP
+.BI \-S \ status_file
+Prints easily parsable status information to a file.
+This information was previously only available in sync mode (\fB\-z\fP) and was mixed with the normal logging output.
+Setting this option to \fB@LOG\fP results in status info being mixed with normal logging output.
+
+The following is printed for each client after all have registered:
+
+.nf
+CONNECT;status;target
+.fi
+
+Where "status" is either "success" or "failed", and "target" is the name of the client.
+
+The following is printed after each file:
+
+.nf
+RESULT;target;filename;size;status;speed
+.fi
+
+Where "target" is the name of the client, "filename" is the name of the current file, "size" is the size of the file in kilobytes (i.e. 1234KB), "speed" is the transmission speed for that file in KB/s, and status is:
+
+copy: The file was sent.
+
+overwrite: The file was sent, and overwrote an existing file.
+Only generated in sync mode.
+
+skipped: The file was declined by the client because it is older that the existing file.
+Only generated in sync mode.
+
+rejected: The file was rejected, because the file was sent with an absolute pathname and either the client is using a temp directory or the filename doesn\(aqt match one of the client\(aqs destination directories.
+
+The following is printed at the end of the session:
+
+.nf
+STATS;target;num_copy;num_overwrite;num_skip;total_size;time;speed
+.fi
+
+Where "target" is the name of the client, "num_copy" is the number of files sent with "copy" status, "num_overwrite" is the number of files sent with "overwrite" status, "num_skip" is the number of files sent with "skipped" status, "total_size" is the total size of all files sent in kilobytes, "time" is the total transmission time for all files, and "speed" is the overall transmission speed for all files.
+
+Also, the following line is printed verbatim prior to the STATS lines for ease of reading:
+
+.nf
+HSTATS;target;copy;overwrite;skip;totalKB;time;speedKB/s
+.fi
+
+.TP
+\fB\-r\fP \fIinit_grtt\fP[\fB:\fP\fImin_grtt\fP\fB:\fP\fImax_grtt\fP]
+Specifies the initial value, and optionally the min and max values, of the Group Round Trip Time (GRTT) used in timing calculations.
+The GRTT changes dynamically based on the network conditions.
+This option is useful if the initial connection period is too short or long, if receivers are getting bogged down and cannot respond to the server quick enough before timing out, or if receivers are getting flagged with too high of an RTT and take too long to recover to a reasonable value.
+Valid values are 0.001 to 1000.
+Defaults are \fB0.5\fP for init_grtt, \fB0.01\fP for min_grtt, and \fB15.0\fP for max_grtt.
+.TP
+.BI \-s \ robust
+Specifies the robustness factor for message retransmission.
+The server will resend particular messages up to robust times while waiting for client responses.
+Valid values are 10-50.
+Default is \fB20\fP.
+.TP
+.BI \-i \ list_file
+Name of a file containing a list of files to send, one per line.
+Empty lines are ignored.
+Passing in \(aq-\(aq for list_file reads files from stdin.
+Other files specified on the command line are ignored if \-i is given.
+.TP
+.IR file \ [ file ...]
+The file(s) or directory(ies) to send.
+Any special files (block/character devices, pipes, sockets, etc.) are skipped.
+By default, any symbolic links are sent as links (see \fB\-l\fP).
+Any Windows client will silently refuse to create them.
+If \fB\-F\fP or \fB\-i\fP is specified, any files listed will be ignored.
+
+There are also special metafile names that can send commands to the clients.
+The \fB@DELETE:\fP{filename} metafile instructs the client to delete the given filename.
+nhe usual rules regarding which of the client\(aqs destination directories to use also applies here.
+The \fB@FREESPACE\fP metafile will cause the client to report back the amount of free disk space in the primary destination directory.
+.SH EXAMPLES
+.P
+Starting with the default options:
+
+.RS 5
+uftp the_file
+.RE
+
+The server sends the_file with no encryption at 1000 Kbps, sending announcements over 230.4.4.1 and later messages over 230.5.5.x (x is randomly selected).
+Any client that responds to the announcement will be accepted.
+The payload portion of the packets will be 1300 bytes.
+
+To send at 50 Mbps:
+
+.RS 5
+uftp \-R 50000 the_file
+.RE
+
+Or to allow the transmission rate to be determined dynamically:
+
+.RS 5
+uftp \-C tfmcc the_file
+.RE
+
+To send multiple files:
+
+.RS 5
+uftp file_1 file_2 file_3
+.RE
+
+or:
+
+.RS 5
+uftp dir_1 dir_2 file_3
+.RE
+
+To send multiple files that all land in a certain subdirectory on each client:
+
+.RS 5
+uftp \-D dest_dir file_1 file_2
+.RE
+
+To send announcements over multicast address 224.1.2.3 and later messages over 224.4.5.6:
+
+.RS 5
+uftp \-M 224.1.2.3 \-P 224.4.5.6 file
+.RE
+
+Or for IPv6:
+
+.RS 5
+uftp \-M ff02::1:2:3 \-P ff02::4:5:6 file
+.RE
+
+Or in unicast mode:
+
+.RS 5
+uftp \-M host_or_ip file
+.RE
+
+Where host_or_ip is the hostname or unicast IP address of the host to send to.
+
+To send only to certain hosts:
+
+.RS 5
+uftp \-H client_id_1,client_id_2,client_id_3 file_to_send
+.RE
+
+or:
+
+.RS 5
+uftp \-H @file_containing_list_of_clients file_to_send
+.RE
+
+If you want to use jumbo ethernet frames of 9000 bytes (leaving 200 bytes of space for headers):
+
+.RS 5
+uftp \-b 8800 file_to_send
+.RE
+
+To send \fI/path/to/file1\fP and \fI/path/to/file2\fP, and have them appear on clients as \fI/remote/dir/to/file1\fP and \fI/remote/dir/to/file2\fP:
+
+.RS 5
+uftp \-E /path \-D /remote/dir /path/to/file1 /path/to/file2
+.RE
+
+To send a file encrypted with AES-256-CBC and SHA-1 hashing, using an autogenerated 512-bit RSA key to negotiate the session:
+
+.RS 5
+uftp \-Y aes256-cbc \-h sha1 file_to_send
+.RE
+
+To do the above with a previously generated RSA key stored in key_file_or_container (under Windows, the name of an internal key container, otherwise the name of a file containing the key in PEM format):
+
+.RS 5
+uftp \-Y aes256-cbc \-h sha1 \-k key_file_or_container file_to_send
+.RE
+.SH EXIT STATUS
+.P
+The following exit values are returned:
+.TP
+0
+The file transfer session finished with at least one client receiving at least one file.
+.TP
+1
+An invalid command line parameter was specified.
+.TP
+2
+An error occurred while attempting to initialize network connections.
+.TP
+3
+An error occurred while reading or generating cryptographic key data.
+.TP
+4
+An error occurred while opening or rolling the log file.
+.TP
+5
+A memory allocation error occurred.
+.TP
+6
+The server was interrupted by the user.
+.TP
+7
+No client responded to the ANNOUNCE message.
+.TP
+8
+No client responded to a FILEINFO message.
+.TP
+9
+All client either dropped out of the session or aborted.
+Also returned if one client drops out or aborts when \fB\-q\fP is specified.
+.TP
+10
+The session completed, but none of the specified files were received by any client.
+.SH SEE ALSO
+.BR uftpd (1),
+.BR uftpproxyd (1),
+.BR uftp_keymgt (1).
+.SH NOTES
+.P
+The latest version of UFTP can be found at http://uftp-multicast.sourceforge.net.
+UFTP is covered by the GNU General Public License.
+Commercial licenses and support are available from Dennis Bush (bush@tcnj.edu).
